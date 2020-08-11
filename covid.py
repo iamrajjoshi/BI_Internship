@@ -1,99 +1,125 @@
+import pandas as pd
+from mpl_toolkits.axisartist.parasite_axes import HostAxes, ParasiteAxes
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import pandas as pd
 from datetime import datetime as dt
 
-plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=20))
+def runningAverage(N, inputList):
+	N = 7
+	cumsum, moving_aves = [0], []
+	for i, x in enumerate(inputList, 1):
+		cumsum.append(cumsum[i-1] + x)
+		if i>=N:
+			moving_ave = (cumsum[i] - cumsum[i-N])/N
+			moving_aves.append(moving_ave)
+	for i in range(0,N-1):
+		moving_aves.insert(0,0)
+	return moving_aves
 
-dataFrame = pd.read_csv('test.csv')
-uniqueStates = list(dict.fromkeys(dataFrame[dataFrame.columns[1]].tolist()))
+def covidCases(df):
+	uniqueStates = list(dict.fromkeys(df[df.columns[1]].tolist()))
+	cases = {}
+	for i in range (0, len(uniqueStates)):
+		cases.update({uniqueStates[i]: []})
 
-data = {}
-for i in range (0, len(uniqueStates)):
-	data.update({uniqueStates[i]: []})
+	#Fill data with a list of all the cases of each state
+	newDate = df.at[0,'date']
+	day = 0
+	for i in range(0,int(df.size/5)):
+		state = str(df.at[i,'state_name'])
+		currentDate = df.at[i,'date']
+		rawCases = df.at[i,'confirmed_cases']
+		if(newDate == currentDate):
+			cases[state].append(rawCases)
+		else:
+			newDate = currentDate
+			day +=1
+			for j in cases:
+				if(len(cases[j]) < day):
+					if(len (cases[j]) == 0):
+						cases[j].append(0)
+					else:
+						cases[j].append(cases[j][-1])
+			cases[state].append(rawCases)
+	day +=1
+	for j in cases:
+		if(len(cases[j]) < day):
+			cases[j].append(0)
+	sumCases = [0]*(day+1)
+	for each in cases:
+		cases[each].insert(0,cases[each][0])
+		cases[each] = list(map(int, cases[each]))
+		cases[each] = [cases[each][n]-cases[each][n-1] for n in range(1,len(cases[each]))]
+		sumCases = [sum(x) for x in zip(sumCases, cases[each])]
+	return runningAverage(7, sumCases)
 
-#Fill data with a list of all the cases of each state
-newDate = dataFrame.at[0,'date']
-day = 0
-for i in range(0,int(dataFrame.size/5)):
-	state = str(dataFrame.at[i,'state_name'])
-	currentDate = dataFrame.at[i,'date']
-	cases = dataFrame.at[i,'confirmed_cases']
-	if(newDate == currentDate):
-		data[state].append(cases)
-	else:
-		newDate = currentDate
-		day +=1
-		for j in data:
-			if(len(data[j]) < day):
-				if(len (data[j]) == 0):
-					data[j].append(0)
-				else:
-					data[j].append(data[j][-1])
-		data[state].append(cases)
-day +=1
-for j in data:
-	if(len(data[j]) < day):
-		data[j].append(0)		
+def extractDates(df):
+	stringDates = list(dict.fromkeys(df[df.columns[0]].tolist()))
+	dates = []
+	for i in range(0,len(stringDates)):
+		dates.append(mdates.date2num(dt.strptime(stringDates[i], '%Y-%m-%d')))
+	return dates
+	
+def covidClicks(df):
+	covid = df[df.columns[1]].tolist()
+	return runningAverage(7,covid)
 
-#Get all Dates
-string_date = list(dict.fromkeys(dataFrame[dataFrame.columns[0]].tolist()))
-date = []
-for i in range(0,len(string_date)):
-	date.append(mdates.date2num(dt.strptime(string_date[i], '%Y-%m-%d')))
-#print(date)
-sumStates = [0]*(day+1)
-for each in data:
-	data[each].insert(0,data[each][0])
-	data[each] = list(map(int, data[each])) 
-	data[each] = [data[each][n]-data[each][n-1] for n in range(1,len(data[each]))]
-	sumStates = [sum(x) for x in zip(sumStates, data[each])]
+def vaccineClicks(df):
+	vaccine = df[df.columns[1]].tolist()
+	return runningAverage(7,vaccine)
 
-N = 7
-cumsum, moving_aves = [0], []
-for i, x in enumerate(sumStates, 1):
-    cumsum.append(cumsum[i-1] + x)
-    if i>=N:
-        moving_ave = (cumsum[i] - cumsum[i-N])/N
-        #can do stuff with moving_ave here
-        moving_aves.append(moving_ave)
-for i in range(0,N-1):
-	moving_aves.insert(0,0)
+def display(dates,cases,covid,vaccine):
 
-clickDataFrame = pd.read_csv('bob.csv')
-clicks = clickDataFrame[clickDataFrame.columns[1]].tolist()
+	fig = plt.figure()
+	host = HostAxes(fig, [0.15, 0.1, 0.65, 0.8])
+	par1 = ParasiteAxes(host, sharex=host)
+	par2 = ParasiteAxes(host, sharex=host)
+	host.parasites.append(par1)
+	host.parasites.append(par2)
 
-N = 7
-cumsum, clicksavg = [0], []
-for i, x in enumerate(clicks, 1):
-    cumsum.append(cumsum[i-1] + x)
-    if i>=N:
-        moving_ave = ((cumsum[i] - cumsum[i-N])/N)*0.1
-        #can do stuff with moving_ave here
-        clicksavg.append(moving_ave)
-for i in range(0,N-1):
-	clicksavg.insert(0,0)
+	host.set_ylabel("Cases")
 
-clickDataFrame = pd.read_csv('vaccine.csv')
-vaccine = clickDataFrame[clickDataFrame.columns[1]].tolist()
+	host.axis["right"].set_visible(False)
+	par1.axis["right"].set_visible(True)
+	par1.set_ylabel("COVID - 19 Clicks")
+	par1.axis["right"].major_ticklabels.set_visible(True)
+	par1.axis["right"].label.set_visible(True)
 
-N = 7
-cumsum, vaccineavg = [0], []
-for i, x in enumerate(vaccine, 1):
-    cumsum.append(cumsum[i-1] + x)
-    if i>=N:
-        moving_ave = ((cumsum[i] - cumsum[i-N])/N)*3
-        #can do stuff with moving_ave here
-        vaccineavg.append(moving_ave)
-for i in range(0,N-1):
-	vaccineavg.insert(0,0)
+	par2.set_ylabel("Vaccine Clicks")
+	offset = (60, 0)
+	new_axisline = par2.get_grid_helper().new_fixed_axis
+	par2.axis["right2"] = new_axisline(loc="right", axes=par2, offset=offset)
 
-#plt.plot(date, sumStates, label = str('USA'))
-plt.plot(date, clicksavg, label = str('clicks'))
-plt.plot(date, moving_aves, label = str('USA 7 Day Average'))
-plt.plot(date, vaccineavg, label = str('vaccine'))
-plt.legend()
-plt.gcf().autofmt_xdate()
-#print(moving_aves)
-plt.show()
+	fig.add_axes(host)
+
+
+	plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+	plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=7))
+
+	p1, = host.plot(dates,cases, label="USA 7 Day Average")
+	p2, = par1.plot(dates,covid, label="COVID Keyword Clicks")
+	p3, = par2.plot(dates,vaccine, label="Vaccine Keyword Clicks")
+
+	host.legend()
+
+	host.axis["left"].label.set_color(p1.get_color())
+	par1.axis["right"].label.set_color(p2.get_color())
+	par2.axis["right2"].label.set_color(p3.get_color())
+
+	plt.setp(host.axis["bottom"].major_ticklabels, rotation=45, ha="right")	
+	plt.gcf().canvas.set_window_title('COVID-19 Cases vs. BI Search Queries')
+	plt.show()
+
+
+if __name__ == "__main__":
+	df = pd.read_csv('cases.csv')
+	dates = extractDates(df)
+	cases = covidCases(df)
+	
+	df = pd.read_csv('covid_keywords.csv')
+	covid = covidClicks(df)
+	
+	df = pd.read_csv('vaccine_keywords.csv')
+	vaccine = vaccineClicks(df)
+	
+	display(dates,cases,covid,vaccine)
